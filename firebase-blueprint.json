@@ -1,0 +1,274 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private authenticated player profile and access control record.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "callsign": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "enum": ["player"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "callsign", "email", "role", "createdAt", "updatedAt"]
+    },
+    "CloudSaveSlot": {
+      "title": "CloudSaveSlot",
+      "description": "Private player progression snapshot synchronized from local device state.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "slotLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "realmId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "biomeKey": {
+          "type": "string",
+          "enum": ["highland_dusk", "sahara_amber", "pacific_jade", "obsidian_borealis"]
+        },
+        "playerX": { "type": "number" },
+        "playerZ": { "type": "number" },
+        "hp": { "type": "number" },
+        "maxHp": { "type": "number" },
+        "shards": { "type": "integer" },
+        "level": { "type": "integer" },
+        "stability": { "type": "number" },
+        "orderRep": { "type": "integer" },
+        "verdantRep": { "type": "integer" },
+        "unboundRep": { "type": "integer" },
+        "completedQuests": { "type": "integer" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "slotLabel",
+        "realmId",
+        "biomeKey",
+        "playerX",
+        "playerZ",
+        "hp",
+        "maxHp",
+        "shards",
+        "level",
+        "stability",
+        "orderRep",
+        "verdantRep",
+        "unboundRep",
+        "completedQuests",
+        "lat",
+        "lng",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VectorMemoryRecord": {
+      "title": "VectorMemoryRecord",
+      "description": "Cloud-synced episodic vector memory entry generated on the user's device.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 400
+        },
+        "category": {
+          "type": "string",
+          "enum": ["choice", "combat", "discovery", "quest", "atlas"]
+        },
+        "factionTag": {
+          "type": "string",
+          "enum": ["order", "verdant", "unbound", "neutral"]
+        },
+        "importance": {
+          "type": "number"
+        },
+        "embedding": {
+          "type": "array",
+          "description": "Bounded 64-dim L2-normalized semantic vector"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "summary", "category", "factionTag", "importance", "embedding", "createdAt"]
+    },
+    "MultiplayerRealm": {
+      "title": "MultiplayerRealm",
+      "description": "Cross-platform shared world realm state synchronized across connected clients.",
+      "type": "object",
+      "properties": {
+        "realmId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "realmName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "biomeKey": {
+          "type": "string",
+          "enum": ["highland_dusk", "sahara_amber", "pacific_jade", "obsidian_borealis"]
+        },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "stability": { "type": "number" },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["realmId", "realmName", "biomeKey", "lat", "lng", "stability", "ownerId", "createdAt", "updatedAt"]
+    },
+    "RealmPlayerPresence": {
+      "title": "RealmPlayerPresence",
+      "description": "Non-PII live spatial presence of a player inside a shared realm.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "realmId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "callsign": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "rotY": { "type": "number" },
+        "faction": {
+          "type": "string",
+          "enum": ["order", "verdant", "unbound", "neutral"]
+        },
+        "shards": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "realmId", "callsign", "x", "y", "z", "rotY", "faction", "shards", "updatedAt"]
+    },
+    "RealmBeacon": {
+      "title": "RealmBeacon",
+      "description": "Persistent cross-platform narrative marker placed in the 3D world by a wayfarer.",
+      "type": "object",
+      "properties": {
+        "authorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "realmId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "callsign": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "message": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 180
+        },
+        "faction": {
+          "type": "string",
+          "enum": ["order", "verdant", "unbound", "neutral"]
+        },
+        "x": { "type": "number" },
+        "z": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "realmId", "callsign", "message", "faction", "x", "z", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private owner-only player profile and role record."
+    },
+    "/users/{userId}/saves/{saveId}": {
+      "schema": { "$ref": "#/entities/CloudSaveSlot" },
+      "description": "Private owner-only cloud save snapshots."
+    },
+    "/users/{userId}/memories/{memoryId}": {
+      "schema": { "$ref": "#/entities/VectorMemoryRecord" },
+      "description": "Private owner-only cloud backup of local vector memories."
+    },
+    "/realms/{realmId}": {
+      "schema": { "$ref": "#/entities/MultiplayerRealm" },
+      "description": "Shared multiplayer realm metadata and world stability."
+    },
+    "/realms/{realmId}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/RealmPlayerPresence" },
+      "description": "Live spatial presence for connected cross-platform wayfarers."
+    },
+    "/realms/{realmId}/beacons/{beaconId}": {
+      "schema": { "$ref": "#/entities/RealmBeacon" },
+      "description": "Shared narrative beacons placed by wayfarers in the 3D world."
+    }
+  }
+}

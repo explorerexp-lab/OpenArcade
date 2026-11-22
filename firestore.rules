@@ -1,0 +1,325 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Hardened Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'chittireloaded3.0@gmail.com'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidBiome(b) {
+      return b in ['highland_dusk', 'sahara_amber', 'pacific_jade', 'obsidian_borealis'];
+    }
+
+    function isValidFaction(f) {
+      return f in ['order', 'verdant', 'unbound', 'neutral'];
+    }
+
+    function isValidCategory(c) {
+      return c in ['choice', 'combat', 'discovery', 'quest', 'atlas'];
+    }
+
+    // --- Validation Blueprints (Anti-Update-Gap) ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'callsign', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'callsign', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId && data.uid == request.auth.uid
+        && data.callsign is string && data.callsign.size() >= 2 && data.callsign.size() <= 40
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.role is string && data.role == 'player'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCloudSave(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'slotLabel', 'realmId', 'biomeKey', 'playerX', 'playerZ',
+          'hp', 'maxHp', 'shards', 'level', 'stability', 'orderRep', 'verdantRep',
+          'unboundRep', 'completedQuests', 'lat', 'lng', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'slotLabel', 'realmId', 'biomeKey', 'playerX', 'playerZ',
+          'hp', 'maxHp', 'shards', 'level', 'stability', 'orderRep', 'verdantRep',
+          'unboundRep', 'completedQuests', 'lat', 'lng', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.slotLabel is string && data.slotLabel.size() >= 1 && data.slotLabel.size() <= 64
+        && data.realmId is string && data.realmId.size() >= 1 && data.realmId.size() <= 64 && data.realmId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.biomeKey is string && data.biomeKey.size() <= 32 && isValidBiome(data.biomeKey)
+        && data.playerX is number && data.playerX >= -500 && data.playerX <= 500
+        && data.playerZ is number && data.playerZ >= -500 && data.playerZ <= 500
+        && data.hp is number && data.hp >= 0 && data.hp <= 1000
+        && data.maxHp is number && data.maxHp >= 1 && data.maxHp <= 1000
+        && data.shards is int && data.shards >= 0 && data.shards <= 1000000
+        && data.level is int && data.level >= 1 && data.level <= 999
+        && data.stability is number && data.stability >= 0 && data.stability <= 100
+        && data.orderRep is int && data.orderRep >= -1000 && data.orderRep <= 1000
+        && data.verdantRep is int && data.verdantRep >= -1000 && data.verdantRep <= 1000
+        && data.unboundRep is int && data.unboundRep >= -1000 && data.unboundRep <= 1000
+        && data.completedQuests is int && data.completedQuests >= 0 && data.completedQuests <= 10000
+        && data.lat is number && data.lat >= -90 && data.lat <= 90
+        && data.lng is number && data.lng >= -180 && data.lng <= 180
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidVectorMemory(data, userId) {
+      return data.keys().hasAll(['ownerId', 'summary', 'category', 'factionTag', 'importance', 'embedding', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'summary', 'category', 'factionTag', 'importance', 'embedding', 'createdAt'])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.summary is string && data.summary.size() >= 4 && data.summary.size() <= 400
+        && data.category is string && data.category.size() <= 32 && isValidCategory(data.category)
+        && data.factionTag is string && data.factionTag.size() <= 32 && isValidFaction(data.factionTag)
+        && data.importance is number && data.importance >= 0 && data.importance <= 10
+        && data.embedding is list && data.embedding.size() >= 1 && data.embedding.size() <= 64 && data.embedding[0] is number
+        && data.createdAt is timestamp;
+    }
+
+    function isValidRealm(data, realmId) {
+      return data.keys().hasAll(['realmId', 'realmName', 'biomeKey', 'lat', 'lng', 'stability', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['realmId', 'realmName', 'biomeKey', 'lat', 'lng', 'stability', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.realmId is string && data.realmId.size() >= 1 && data.realmId.size() <= 64 && data.realmId == realmId
+        && data.realmName is string && data.realmName.size() >= 2 && data.realmName.size() <= 80
+        && data.biomeKey is string && data.biomeKey.size() <= 32 && isValidBiome(data.biomeKey)
+        && data.lat is number && data.lat >= -90 && data.lat <= 90
+        && data.lng is number && data.lng >= -180 && data.lng <= 180
+        && data.stability is number && data.stability >= 0 && data.stability <= 100
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPresence(data, realmId, playerId) {
+      return data.keys().hasAll(['uid', 'realmId', 'callsign', 'x', 'y', 'z', 'rotY', 'faction', 'shards', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'realmId', 'callsign', 'x', 'y', 'z', 'rotY', 'faction', 'shards', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == playerId && data.uid == request.auth.uid
+        && data.realmId is string && data.realmId.size() >= 1 && data.realmId.size() <= 64 && data.realmId == realmId
+        && data.callsign is string && data.callsign.size() >= 2 && data.callsign.size() <= 40
+        && data.x is number && data.x >= -500 && data.x <= 500
+        && data.y is number && data.y >= -100 && data.y <= 300
+        && data.z is number && data.z >= -500 && data.z <= 500
+        && data.rotY is number && data.rotY >= -100 && data.rotY <= 100
+        && data.faction is string && data.faction.size() <= 32 && isValidFaction(data.faction)
+        && data.shards is int && data.shards >= 0 && data.shards <= 1000000
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBeacon(data, realmId) {
+      return data.keys().hasAll(['authorId', 'realmId', 'callsign', 'message', 'faction', 'x', 'z', 'createdAt'])
+        && data.keys().hasOnly(['authorId', 'realmId', 'callsign', 'message', 'faction', 'x', 'z', 'createdAt'])
+        && data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 && data.authorId == request.auth.uid
+        && data.realmId is string && data.realmId.size() >= 1 && data.realmId.size() <= 64 && data.realmId == realmId
+        && data.callsign is string && data.callsign.size() >= 2 && data.callsign.size() <= 40
+        && data.message is string && data.message.size() >= 3 && data.message.size() <= 180
+        && data.faction is string && data.faction.size() <= 32 && isValidFaction(data.faction)
+        && data.x is number && data.x >= -500 && data.x <= 500
+        && data.z is number && data.z >= -500 && data.z <= 500
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection: Private User Profiles (PII Isolated) ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && (
+          isAdmin() ||
+          (
+            isOwner(userId)
+            && incoming().uid == existing().uid
+            && incoming().role == existing().role
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['callsign', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // --- Subcollection: Private Cloud Saves ---
+      match /saves/{saveId} {
+        allow get: if isValidId(userId) && isValidId(saveId) && (isOwner(userId) || isAdmin());
+        allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(saveId)
+          && isValidCloudSave(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(saveId)
+          && isValidCloudSave(incoming(), userId)
+          && (
+            isAdmin() ||
+            (
+              isOwner(userId)
+              && incoming().ownerId == existing().ownerId
+              && incoming().createdAt == existing().createdAt
+              && incoming().updatedAt == request.time
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'slotLabel', 'realmId', 'biomeKey', 'playerX', 'playerZ',
+                'hp', 'maxHp', 'shards', 'level', 'stability',
+                'orderRep', 'verdantRep', 'unboundRep', 'completedQuests',
+                'lat', 'lng', 'updatedAt'
+              ])
+              && exists(/databases/$(database)/documents/users/$(userId))
+            )
+          );
+
+        allow delete: if isValidId(userId) && isValidId(saveId) && (isOwner(userId) || isAdmin());
+      }
+
+      // --- Subcollection: Private Vector Memory Cloud Backup ---
+      match /memories/{memoryId} {
+        allow get: if isValidId(userId) && isValidId(memoryId) && (isOwner(userId) || isAdmin());
+        allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(memoryId)
+          && isValidVectorMemory(incoming(), userId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if false;
+
+        allow delete: if isValidId(userId) && isValidId(memoryId) && (isOwner(userId) || isAdmin());
+      }
+    }
+
+    // --- Collection: Cross-Platform Multiplayer Realms ---
+    match /realms/{realmId} {
+      allow get: if isVerifiedUser() && isValidId(realmId);
+      allow list: if isVerifiedUser() && resource.data.realmId is string && resource.data.realmId.size() <= 64;
+
+      allow create: if isVerifiedUser()
+        && isValidId(realmId)
+        && isValidRealm(incoming(), realmId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(realmId)
+        && isValidRealm(incoming(), realmId)
+        && (
+          isAdmin() ||
+          (
+            // Tier 1: Realm Owner updating realm metadata or stability
+            existing().ownerId == request.auth.uid
+            && incoming().ownerId == existing().ownerId
+            && incoming().realmId == existing().realmId
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['realmName', 'biomeKey', 'lat', 'lng', 'stability', 'updatedAt'])
+          ) ||
+          (
+            // Tier 2: Connected Wayfarer shifting shared world stability
+            incoming().ownerId == existing().ownerId
+            && incoming().realmId == existing().realmId
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['stability', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(realmId) && (isAdmin() || (isVerifiedUser() && existing().ownerId == request.auth.uid));
+
+      // --- Subcollection: Live Wayfarer Spatial Presence ---
+      match /players/{playerId} {
+        allow get: if isVerifiedUser() && isValidId(realmId) && isValidId(playerId);
+        allow list: if isVerifiedUser() && resource.data.realmId == realmId;
+
+        allow create: if isVerifiedUser()
+          && isValidId(realmId)
+          && isValidId(playerId)
+          && isValidPresence(incoming(), realmId, playerId)
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/realms/$(realmId));
+
+        allow update: if isVerifiedUser()
+          && isValidId(realmId)
+          && isValidId(playerId)
+          && isValidPresence(incoming(), realmId, playerId)
+          && (
+            isAdmin() ||
+            (
+              existing().uid == request.auth.uid
+              && incoming().uid == existing().uid
+              && incoming().realmId == existing().realmId
+              && incoming().updatedAt == request.time
+              && incoming().diff(existing()).affectedKeys().hasOnly(['callsign', 'x', 'y', 'z', 'rotY', 'faction', 'shards', 'updatedAt'])
+              && exists(/databases/$(database)/documents/realms/$(realmId))
+            )
+          );
+
+        allow delete: if isValidId(realmId) && isValidId(playerId) && (isOwner(playerId) || isAdmin());
+      }
+
+      // --- Subcollection: Shared Narrative Beacons ---
+      match /beacons/{beaconId} {
+        allow get: if isVerifiedUser() && isValidId(realmId) && isValidId(beaconId);
+        allow list: if isVerifiedUser() && resource.data.realmId == realmId;
+
+        allow create: if isVerifiedUser()
+          && isValidId(realmId)
+          && isValidId(beaconId)
+          && isValidBeacon(incoming(), realmId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/realms/$(realmId));
+
+        allow update: if false;
+
+        allow delete: if isValidId(realmId) && isValidId(beaconId) && (
+          isAdmin() ||
+          (isVerifiedUser() && existing().authorId == request.auth.uid)
+        );
+      }
+    }
+  }
+}

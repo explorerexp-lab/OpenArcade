@@ -1,0 +1,11 @@
+{
+  "name": "Aethern: Echoes of the Living Atlas",
+  "description": "A local-first 3D narrative action-exploration RPG with Three.js PBR worlds, on-device vector memory, dynamic AI quest synthesis, real-time adaptive soundscapes, Google Maps world seeding, and Firebase cloud sync.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
