@@ -1,12 +1,26 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
+import { doc, getDocFromServer, getFirestore, type Firestore } from 'firebase/firestore';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+export interface FirebaseWebConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  appId: string;
+  firestoreDatabaseId: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+}
+
+let appInstance: FirebaseApp | null = null;
+export let db!: Firestore;
+export let auth!: Auth;
 export const googleProvider = new GoogleAuthProvider();
+let firebaseReady = false;
+
+export function isFirebaseReady(): boolean {
+  return firebaseReady;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -39,16 +53,17 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): never {
+  const currentUser = auth?.currentUser;
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
+      userId: currentUser?.uid,
+      email: currentUser?.email,
+      emailVerified: currentUser?.emailVerified,
+      isAnonymous: currentUser?.isAnonymous,
+      tenantId: currentUser?.tenantId,
       providerInfo:
-        auth.currentUser?.providerData?.map((provider) => ({
+        currentUser?.providerData?.map((provider) => ({
           providerId: provider.providerId,
           email: provider.email,
         })) || [],
@@ -61,6 +76,7 @@ export function handleFirestoreError(
 }
 
 async function testConnection(): Promise<void> {
+  if (!db) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
@@ -70,4 +86,36 @@ async function testConnection(): Promise<void> {
   }
 }
 
-void testConnection();
+/**
+ * Loads public Firebase web configuration at runtime from the server (/api/firebase-config)
+ * so no API keys are statically imported or baked into client source files or JS bundles.
+ */
+export async function initFirebase(): Promise<void> {
+  if (appInstance) return;
+  try {
+    const res = await fetch('/api/firebase-config', { cache: 'no-store' });
+    if (!res.ok) {
+      return;
+    }
+    const config = (await res.json()) as FirebaseWebConfig;
+    if (!config.apiKey || !config.projectId || !config.appId) {
+      return;
+    }
+
+    appInstance = initializeApp({
+      apiKey: config.apiKey,
+      authDomain: config.authDomain,
+      projectId: config.projectId,
+      appId: config.appId,
+      storageBucket: config.storageBucket,
+      messagingSenderId: config.messagingSenderId,
+    });
+    db = getFirestore(appInstance, config.firestoreDatabaseId);
+    auth = getAuth(appInstance);
+    firebaseReady = true;
+    void testConnection();
+  } catch {
+    // Graceful local-only mode if backend config is temporarily unreachable
+    firebaseReady = false;
+  }
+}

@@ -174,6 +174,25 @@ export class AdaptiveAudioEngine {
     const now = this.ctx.currentTime;
     const jitter = 0.92 + Math.random() * 0.16; // ±8% pitch variation
 
+    if (kind === 'quest_complete') {
+      const chord = [329.63, 440, 554.37, 659.25];
+      chord.forEach((freq, idx) => {
+        if (!this.ctx || !this.masterGain) return;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(freq, now + idx * 0.08);
+        g.gain.setValueAtTime(0.001, now + idx * 0.08);
+        g.gain.exponentialRampToValueAtTime(0.16, now + idx * 0.08 + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.65);
+        o.connect(g);
+        g.connect(this.masterGain);
+        o.start(now + idx * 0.08);
+        o.stop(now + idx * 0.08 + 0.7);
+      });
+      return;
+    }
+
     const osc = this.ctx.createOscillator();
     const env = this.ctx.createGain();
     osc.connect(env);
@@ -252,25 +271,6 @@ export class AdaptiveAudioEngine {
         osc.start(now);
         osc.stop(now + 0.3);
         break;
-      case 'quest_complete': {
-        const chord = [329.63, 440, 554.37, 659.25];
-        osc.stop();
-        chord.forEach((freq, idx) => {
-          if (!this.ctx || !this.masterGain) return;
-          const o = this.ctx.createOscillator();
-          const g = this.ctx.createGain();
-          o.type = 'triangle';
-          o.frequency.setValueAtTime(freq, now + idx * 0.08);
-          g.gain.setValueAtTime(0.001, now + idx * 0.08);
-          g.gain.exponentialRampToValueAtTime(0.16, now + idx * 0.08 + 0.03);
-          g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.65);
-          o.connect(g);
-          g.connect(this.masterGain);
-          o.start(now + idx * 0.08);
-          o.stop(now + idx * 0.08 + 0.7);
-        });
-        break;
-      }
     }
   }
 

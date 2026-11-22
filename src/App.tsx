@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, isFirebaseReady } from './firebase';
 import { AdaptiveAudioEngine } from './game/audioEngine';
 import {
   ensureMultiplayerRealm,
@@ -351,6 +351,7 @@ export default function App() {
 
   // Firebase Auth listener
   useEffect(() => {
+    if (!isFirebaseReady() || !auth) return;
     const unsub = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       if (nextUser && nextUser.emailVerified) {

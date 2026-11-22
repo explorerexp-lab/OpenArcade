@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -63,8 +64,56 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
 
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, hasGeminiKey: Boolean(process.env.GEMINI_API_KEY) });
+  });
+
+  // Public Firebase web app config served at runtime so client source & built JS bundles contain no hardcoded keys
+  app.get('/api/firebase-config', (_req, res) => {
+    let fileConfig: Record<string, unknown> = {};
+    const configPath = path.resolve(__dirname, 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+      } catch {
+        fileConfig = {};
+      }
+    }
+
+    const apiKey = process.env.FIREBASE_API_KEY || String(fileConfig.apiKey || '');
+    const projectId = process.env.FIREBASE_PROJECT_ID || String(fileConfig.projectId || '');
+    const appId = process.env.FIREBASE_APP_ID || String(fileConfig.appId || '');
+    const authDomain = process.env.FIREBASE_AUTH_DOMAIN || String(fileConfig.authDomain || '');
+    const firestoreDatabaseId =
+      process.env.FIREBASE_FIRESTORE_DATABASE_ID ||
+      String(fileConfig.firestoreDatabaseId || '(default)');
+    const storageBucket =
+      process.env.FIREBASE_STORAGE_BUCKET || String(fileConfig.storageBucket || '');
+    const messagingSenderId =
+      process.env.FIREBASE_MESSAGING_SENDER_ID || String(fileConfig.messagingSenderId || '');
+
+    if (!apiKey || !projectId || !appId) {
+      return res.status(503).json({
+        error: 'Firebase web configuration is not configured on the server.',
+      });
+    }
+
+    return res.json({
+      apiKey,
+      authDomain,
+      projectId,
+      appId,
+      firestoreDatabaseId,
+      storageBucket,
+      messagingSenderId,
+    });
   });
 
   // 1. Deep Narrative & Dynamic Quest Synthesis (gemini-4-carbon + ThinkingLevel.HIGH)

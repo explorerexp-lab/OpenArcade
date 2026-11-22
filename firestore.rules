@@ -57,7 +57,7 @@ service cloud.firestore {
         && data.keys().hasOnly(['uid', 'callsign', 'email', 'role', 'createdAt', 'updatedAt'])
         && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId && data.uid == request.auth.uid
         && data.callsign is string && data.callsign.size() >= 2 && data.callsign.size() <= 40
-        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160 && data.email == request.auth.token.email
         && data.role is string && data.role == 'player'
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -82,6 +82,7 @@ service cloud.firestore {
         && data.playerZ is number && data.playerZ >= -500 && data.playerZ <= 500
         && data.hp is number && data.hp >= 0 && data.hp <= 1000
         && data.maxHp is number && data.maxHp >= 1 && data.maxHp <= 1000
+        && data.hp <= data.maxHp
         && data.shards is int && data.shards >= 0 && data.shards <= 1000000
         && data.level is int && data.level >= 1 && data.level <= 999
         && data.stability is number && data.stability >= 0 && data.stability <= 100
@@ -149,6 +150,13 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    // --- Collection: Admin Registry (Read-Only for Clients, Never Client-Writable) ---
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
     // --- Collection: Private User Profiles (PII Isolated) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -163,14 +171,15 @@ service cloud.firestore {
       allow update: if isVerifiedUser()
         && isValidId(userId)
         && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
         && (
           isAdmin() ||
           (
             isOwner(userId)
-            && incoming().uid == existing().uid
             && incoming().role == existing().role
-            && incoming().createdAt == existing().createdAt
-            && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly(['callsign', 'updatedAt'])
           )
         );
@@ -194,13 +203,13 @@ service cloud.firestore {
           && isValidId(userId)
           && isValidId(saveId)
           && isValidCloudSave(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
           && (
             isAdmin() ||
             (
               isOwner(userId)
-              && incoming().ownerId == existing().ownerId
-              && incoming().createdAt == existing().createdAt
-              && incoming().updatedAt == request.time
               && incoming().diff(existing()).affectedKeys().hasOnly([
                 'slotLabel', 'realmId', 'biomeKey', 'playerX', 'playerZ',
                 'hp', 'maxHp', 'shards', 'level', 'stability',
@@ -235,36 +244,29 @@ service cloud.firestore {
     // --- Collection: Cross-Platform Multiplayer Realms ---
     match /realms/{realmId} {
       allow get: if isVerifiedUser() && isValidId(realmId);
-      allow list: if isVerifiedUser() && resource.data.realmId is string && resource.data.realmId.size() <= 64;
+      allow list: if isAdmin();
 
       allow create: if isVerifiedUser()
         && isValidId(realmId)
         && isValidRealm(incoming(), realmId)
         && incoming().ownerId == request.auth.uid
         && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
 
       allow update: if isVerifiedUser()
         && isValidId(realmId)
         && isValidRealm(incoming(), realmId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().realmId == existing().realmId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
         && (
           isAdmin() ||
           (
-            // Tier 1: Realm Owner updating realm metadata or stability
+            // Owner-only realm metadata & stability updates (prevents cross-player griefing)
             existing().ownerId == request.auth.uid
-            && incoming().ownerId == existing().ownerId
-            && incoming().realmId == existing().realmId
-            && incoming().createdAt == existing().createdAt
-            && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly(['realmName', 'biomeKey', 'lat', 'lng', 'stability', 'updatedAt'])
-          ) ||
-          (
-            // Tier 2: Connected Wayfarer shifting shared world stability
-            incoming().ownerId == existing().ownerId
-            && incoming().realmId == existing().realmId
-            && incoming().createdAt == existing().createdAt
-            && incoming().updatedAt == request.time
-            && incoming().diff(existing()).affectedKeys().hasOnly(['stability', 'updatedAt'])
           )
         );
 
@@ -280,19 +282,20 @@ service cloud.firestore {
           && isValidId(playerId)
           && isValidPresence(incoming(), realmId, playerId)
           && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
           && exists(/databases/$(database)/documents/realms/$(realmId));
 
         allow update: if isVerifiedUser()
           && isValidId(realmId)
           && isValidId(playerId)
           && isValidPresence(incoming(), realmId, playerId)
+          && incoming().uid == existing().uid
+          && incoming().realmId == existing().realmId
+          && incoming().updatedAt == request.time
           && (
             isAdmin() ||
             (
               existing().uid == request.auth.uid
-              && incoming().uid == existing().uid
-              && incoming().realmId == existing().realmId
-              && incoming().updatedAt == request.time
               && incoming().diff(existing()).affectedKeys().hasOnly(['callsign', 'x', 'y', 'z', 'rotY', 'faction', 'shards', 'updatedAt'])
               && exists(/databases/$(database)/documents/realms/$(realmId))
             )
@@ -309,8 +312,10 @@ service cloud.firestore {
         allow create: if isVerifiedUser()
           && isValidId(realmId)
           && isValidId(beaconId)
+          && beaconId.size() <= 64
           && isValidBeacon(incoming(), realmId)
           && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
           && exists(/databases/$(database)/documents/realms/$(realmId));
 
         allow update: if false;

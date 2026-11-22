@@ -184,6 +184,7 @@ export class ThreeWorldEngine {
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: this.isSoftwareGl,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -369,7 +370,7 @@ export class ThreeWorldEngine {
     innerCompass.position.y = 0.04;
     this.plazaGroup.add(innerCompass);
 
-    // Curved stepping flagstone paths linking central plaza to each of the 3 shrines
+    // Curved stepping flagstone paths linking central plaza edge to each of the 3 shrines
     const stepGeo = new THREE.CylinderGeometry(1.15, 1.25, 0.14, 7);
     for (const shrine of this.sim.shrines) {
       const steps = 6;
@@ -377,6 +378,8 @@ export class ThreeWorldEngine {
         const t = i / (steps + 1);
         const sx = shrine.x * t + Math.sin(t * Math.PI) * 1.6;
         const sz = shrine.z * t;
+        // Keep central astrolabe dais completely unobstructed
+        if (Math.hypot(sx, sz) < 10.6) continue;
         const sy = groundHeightAt(sx, sz, this.sim.seedOffset);
         const pad = new THREE.Mesh(stepGeo, stoneMat);
         pad.position.set(sx, sy + 0.02, sz);
@@ -902,6 +905,7 @@ export class ThreeWorldEngine {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.renderer.render(this.scene, this.camera);
   }
 
   private scheduleAfterSoftwareDraw(cb: () => void): void {
@@ -964,13 +968,13 @@ export class ThreeWorldEngine {
     }
 
     if (this.phase === 'title') {
-      // Live World Camera Tour — smooth atmospheric spline pan around the sunlit sanctuary
+      // Live World Camera Tour — unobstructed golden-hour pan across central plaza toward Astrolabe Spire
       this.titleOrbitAngle += dt * 0.14;
-      const camX = Math.sin(this.titleOrbitAngle) * 24;
-      const camZ = 4 + Math.cos(this.titleOrbitAngle) * 22;
-      const camY = 11.5 + Math.sin(this.titleOrbitAngle * 1.5) * 1.8;
+      const camX = -4.5 + Math.sin(this.titleOrbitAngle) * 3.8;
+      const camZ = 9.0 + Math.cos(this.titleOrbitAngle) * 2.4;
+      const camY = 5.6 + Math.sin(this.titleOrbitAngle * 1.4) * 0.65;
       this.camera.position.set(camX, camY, camZ);
-      this.camera.lookAt(0, 3.8, -12);
+      this.camera.lookAt(-3.2, 3.4, -22);
       this.updateParticles(dt);
       return;
     }

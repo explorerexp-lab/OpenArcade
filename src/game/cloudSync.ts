@@ -13,7 +13,14 @@ import {
   where,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  googleProvider,
+  handleFirestoreError,
+  isFirebaseReady,
+  OperationType,
+} from '../firebase';
 import type {
   BiomeKey,
   FactionId,
@@ -55,6 +62,9 @@ function sanitizeCallsign(raw: string | null | undefined): string {
 }
 
 export async function signInWithGoogle(): Promise<User> {
+  if (!isFirebaseReady() || !auth) {
+    throw new Error('Firebase cloud configuration is not active on this server.');
+  }
   const result = await signInWithPopup(auth, googleProvider);
   const user = result.user;
   await ensureUserProfile(user);
@@ -62,6 +72,7 @@ export async function signInWithGoogle(): Promise<User> {
 }
 
 export async function signOutPlayer(): Promise<void> {
+  if (!isFirebaseReady() || !auth) return;
   await signOut(auth);
 }
 
@@ -266,6 +277,7 @@ export async function ensureMultiplayerRealm(
   user: User,
   world: WorldState
 ): Promise<string> {
+  await ensureUserProfile(user);
   const realmId = sanitizeId(world.realmId);
   const realmPath = `realms/${realmId}`;
   const ref = doc(db, 'realms', realmId);
@@ -356,6 +368,7 @@ export async function plantNarrativeBeacon(
   if (!user.emailVerified) {
     throw new Error('Sign in with a verified Google account to plant a shared beacon.');
   }
+  await ensureUserProfile(user);
   const cleanRealm = sanitizeId(realmId);
   const beaconId = `bcn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const path = `realms/${cleanRealm}/beacons/${beaconId}`;

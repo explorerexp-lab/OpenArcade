@@ -4,5 +4,23 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
+
+# Environment & Secrets (never commit real secrets to GitHub)
+.env
+.env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*service-account*.json
+*serviceAccount*.json
+*credentials*.json
+
+# Provisioned local Firebase & Maps cache files
+firebase-applet-config.json
+firebase-debug*.log
+firestore-debug*.log
+.gmp_cache/
+
+# Local test & browser verification artifacts
+.playwright-cli/
