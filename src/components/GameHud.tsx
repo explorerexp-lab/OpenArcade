@@ -1,270 +1,449 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  BookOpen,
   Cloud,
-  Globe,
-  Mic,
-  Music,
+  Compass,
+  Crosshair,
+  Eye,
+  Flag,
+  Map as MapIcon,
   Pause,
-  Sparkles,
+  Radar,
+  ScrollText,
+  Search,
+  Volume2,
+  VolumeX,
+  Zap,
 } from 'lucide-react';
-import type { DynamicQuest, HudSnapshot, WorldState } from '../game/types';
+import {
+  CLAIM_RADIUS_METERS,
+  PULSE_ENERGY_COST,
+  haversineMeters,
+  type ActiveRouteState,
+  type GeoPlayerState,
+  type LatLngLiteral,
+  type MapLandmarkNode,
+} from '../game/geoEngine';
+import type { DynamicQuest, WorldState } from '../game/types';
+import type { TacticalMapStyle } from './RealMapArena';
+import { PlaceSearchBar } from './PlaceSearchBar';
 
 interface GameHudProps {
-  hud: HudSnapshot;
+  sectorName: string;
+  player: GeoPlayerState;
+  nodes: MapLandmarkNode[];
+  capturedCount: number;
+  targetCaptures: number;
+  threatLevel: number;
+  activeRoute: ActiveRouteState | null;
+  selectedNode: MapLandmarkNode | null;
+  nearestUnclaimedNode: { node: MapLandmarkNode; distance: number } | null;
   world: WorldState;
   activeQuest: DynamicQuest | null;
   remotePlayerCount: number;
+  mapStyle: TacticalMapStyle;
   isMuted: boolean;
+  onChangeMapStyle: (style: TacticalMapStyle) => void;
+  onSelectDestination: (center: LatLngLiteral, label: string) => void;
+  onRescanSector: () => void;
+  onRecenter: () => void;
+  onTriggerPulse: () => void;
+  onToggleOverdrive: () => void;
+  onClaimNode: (node: MapLandmarkNode) => void;
+  onOpenStreetView: (node: MapLandmarkNode) => void;
+  onRouteToNode: (node: MapLandmarkNode) => void;
   onOpenQuests: () => void;
   onOpenSoundscape: () => void;
-  onOpenVoiceOracle: () => void;
-  onOpenWorldAtlas: () => void;
   onOpenCloud: () => void;
   onTogglePause: () => void;
-  onInteractShrine: (shrineId: string) => void;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
-  hud,
-  world,
-  activeQuest,
+  sectorName,
+  player,
+  capturedCount,
+  targetCaptures,
+  threatLevel,
+  activeRoute,
+  selectedNode,
+  nearestUnclaimedNode,
   remotePlayerCount,
+  mapStyle,
   isMuted,
+  onChangeMapStyle,
+  onSelectDestination,
+  onRescanSector,
+  onRecenter,
+  onTriggerPulse,
+  onToggleOverdrive,
+  onClaimNode,
+  onOpenStreetView,
+  onRouteToNode,
   onOpenQuests,
   onOpenSoundscape,
-  onOpenVoiceOracle,
-  onOpenWorldAtlas,
   onOpenCloud,
   onTogglePause,
-  onInteractShrine,
 }) => {
-  // Trailing damage ghost bar for tactile hit feedback
-  const [ghostHp, setGhostHp] = useState(hud.hp);
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
 
-  useEffect(() => {
-    if (hud.hp < ghostHp) {
-      const timer = window.setTimeout(() => setGhostHp(hud.hp), 380);
-      return () => window.clearTimeout(timer);
-    }
-    setGhostHp(hud.hp);
-  }, [hud.hp, ghostHp]);
+  const hpPct = Math.max(0, Math.min(100, (player.integrity / player.maxIntegrity) * 100));
+  const energyPct = Math.max(0, Math.min(100, (player.energy / player.maxEnergy) * 100));
+  const pulseReady = player.pulseCooldown <= 0.05 && player.energy >= PULSE_ENERGY_COST;
 
-  const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
-  const ghostPct = Math.max(0, Math.min(100, (ghostHp / Math.max(1, hud.maxHp)) * 100));
-  const resPct = Math.max(0, Math.min(100, hud.resonance));
-  const nearShrine = hud.nearestShrine && hud.nearestShrine.distance <= 8.5 ? hud.nearestShrine : null;
-
-  const handleBtnClick = (fn: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.blur();
-    fn();
-  };
+  const focusNode = selectedNode ?? nearestUnclaimedNode?.node ?? null;
+  const focusDist = focusNode
+    ? Math.round(haversineMeters(player.position, focusNode.position))
+    : null;
+  const canClaimFocus = Boolean(
+    focusNode && !focusNode.captured && focusDist !== null && focusDist <= CLAIM_RADIUS_METERS
+  );
 
   return (
-    <div
-      className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between p-4 sm:p-5"
-      data-testid="game-hud"
-    >
-      {/* Top Row: Vitality/Stats (Left) + Compact Icon Utility Rail (Right) */}
-      <div className="flex items-start justify-between gap-2 sm:gap-3">
-        {/* Top-Left Player Gauges & Objective */}
-        <div className="w-48 sm:w-72">
-          <div className="border-l-2 border-[#e5a94c] bg-[#101520]/84 px-3 py-2 sm:px-3.5 sm:py-2.5 shadow-lg">
-            {/* HP Header */}
-            <div className="flex items-baseline justify-between text-[10px] sm:text-[11px] font-semibold tracking-[0.12em] uppercase">
-              <span className="text-[#e8decb]">Vitality</span>
-              <span className="font-mono tabular-nums text-[#f5d18c]">
-                {hud.hp} / {hud.maxHp}
-              </span>
-            </div>
-            {/* Custom SVG Beveled Vitality Bar with Trailing Ghost */}
-            <svg
-              viewBox="0 0 220 12"
-              className="mt-1 h-2.5 w-full"
-              aria-label={`Vitality ${hud.hp} of ${hud.maxHp}`}
-            >
-              <polygon points="0,0 220,0 214,12 0,12" fill="#222a38" />
-              <polygon
-                points={`0,0 ${(ghostPct / 100) * 220},0 ${Math.max(0, (ghostPct / 100) * 220 - 4)},12 0,12`}
-                fill="#e5a94c"
-                fillOpacity="0.65"
-              />
-              <polygon
-                points={`0,0 ${(hpPct / 100) * 220},0 ${Math.max(0, (hpPct / 100) * 220 - 4)},12 0,12`}
-                fill={hpPct < 30 ? '#e05d5d' : '#52c78c'}
-              />
-            </svg>
+    <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-3 pb-8 sm:p-4 sm:pb-7">
+      {/* Subtle critical-integrity edge warning */}
+      {hpPct <= 35 && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 border-4 border-rose-500/55"
+        />
+      )}
 
-            {/* Resonance Bar */}
-            <div className="mt-1.5 sm:mt-2 flex items-baseline justify-between text-[10px] tracking-[0.12em] uppercase">
-              <span className="text-[#a8b6c8]">Resonance</span>
-              <span className="font-mono tabular-nums text-[#7cd7f2]">{hud.resonance}</span>
-            </div>
-            <svg
-              viewBox="0 0 220 8"
-              className="mt-0.5 h-1.5 w-full"
-              aria-label={`Resonance ${hud.resonance}`}
-            >
-              <polygon points="0,0 220,0 216,8 0,8" fill="#1e2736" />
-              <polygon
-                points={`0,0 ${(resPct / 100) * 220},0 ${Math.max(0, (resPct / 100) * 220 - 3)},8 0,8`}
-                fill="#5ec9e8"
-              />
-            </svg>
+      {/* TOP PERIMETER ROW */}
+      <div className="flex items-start justify-between gap-2">
+        {/* Top-Left Compact Telemetry Cluster */}
+        <div className="pointer-events-auto w-[212px] sm:w-[276px] border border-[#f2ece1]/18 bg-[#0c111b]/94 px-3 py-2 sm:px-3.5 sm:py-2.5 shadow-xl">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-xs font-semibold text-[#f3cf87]">{sectorName}</span>
+            <span className="shrink-0 font-mono text-[11px] font-semibold text-[#d5dce8] tabular-nums">
+              {capturedCount}/{targetCaptures} Claimed
+            </span>
+          </div>
 
-            {/* Integer Progression Telemetry */}
-            <div className="mt-2 grid grid-cols-3 gap-1.5 sm:gap-2 border-t border-[#f3ece0]/12 pt-1.5 sm:pt-2 font-mono text-[10px] sm:text-[11px] tabular-nums">
-              <div>
-                <div className="text-[8px] sm:text-[9px] tracking-widest text-[#9d9587] uppercase">LVL</div>
-                <div className="font-semibold text-[#f3ece0]">{hud.level}</div>
+          {/* Integrity & Energy Bars */}
+          <div className="mt-2 space-y-1.5">
+            <div>
+              <div className="mb-0.5 flex items-center justify-between text-[11px]">
+                <span className="text-[#aeb7c7]">Integrity</span>
+                <span className="font-mono font-semibold text-[#f2ece1] tabular-nums">
+                  {Math.round(player.integrity)}/{Math.round(player.maxIntegrity)}
+                  {threatLevel > 0.45 ? ' · ALERT' : ''}
+                </span>
               </div>
-              <div>
-                <div className="text-[8px] sm:text-[9px] tracking-widest text-[#9d9587] uppercase">SHARDS</div>
-                <div className="font-semibold text-[#e5a94c]">{hud.shards}</div>
+              <div className="h-1.5 w-full bg-[#1d2638]">
+                <div
+                  className="h-full transition-all duration-150"
+                  style={{
+                    width: `${hpPct}%`,
+                    backgroundColor: hpPct > 35 ? '#34d399' : '#ef4444',
+                  }}
+                />
               </div>
-              <div>
-                <div className="text-[8px] sm:text-[9px] tracking-widest text-[#9d9587] uppercase">STAB</div>
-                <div className="font-semibold text-[#7cd7f2]">{Math.round(world.stability)}%</div>
+            </div>
+
+            <div>
+              <div className="mb-0.5 flex items-center justify-between text-[11px]">
+                <span className="text-[#aeb7c7]">Energy</span>
+                <span className="font-mono font-semibold text-[#9ddcf7] tabular-nums">
+                  {Math.round(player.energy)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-[#1d2638]">
+                <div
+                  className="h-full bg-[#38bdf8] transition-all duration-150"
+                  style={{ width: `${energyPct}%` }}
+                />
               </div>
             </div>
           </div>
 
-          {/* Active Quest Compact Strip */}
-          {activeQuest && (
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={handleBtnClick(onOpenQuests)}
-              className="pointer-events-auto mt-1.5 sm:mt-2 flex w-full cursor-pointer items-center justify-between gap-2 border-l-2 border-[#7cd7f2] bg-[#101520]/84 px-2.5 sm:px-3 py-1.5 text-left transition hover:bg-[#171f2e]"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold tracking-[0.12em] text-[#7cd7f2] uppercase">
-                  <Sparkles className="h-3 w-3 shrink-0" />
-                  <span className="truncate">
-                    {activeQuest.status === 'active' ? 'Quest [Q]' : 'Decree Logged [Q]'}
-                  </span>
-                </div>
-                <div className="truncate text-[11px] sm:text-xs font-medium text-[#f3ece0]">
-                  {activeQuest.title}
-                </div>
-              </div>
-              <span className="shrink-0 font-mono text-[10px] text-[#e5a94c]">
-                {world.completedQuests}/3
-              </span>
-            </button>
-          )}
+          {/* Clean unboxed inline stats */}
+          <div className="mt-2 flex items-center justify-between border-t border-[#f2ece1]/10 pt-1.5 font-mono text-[11px] text-[#c7d0df] tabular-nums">
+            <span>Score {Math.round(player.score)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{Math.round(player.shards)} Shards</span>
+            <span aria-hidden="true">·</span>
+            <span>{(player.distanceTraveledMeters / 1000).toFixed(2)} km</span>
+          </div>
         </div>
 
-        {/* Top-Right Compact Utility Icon Rail (3x2 grid on narrow mobile, single row on sm+) */}
-        <div className="pointer-events-auto flex flex-col items-end gap-1.5 sm:gap-2">
-          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:items-center">
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label="Open Quests and Vector Memory"
-              title="Quests & Vector Memory (Q)"
-              onClick={handleBtnClick(onOpenQuests)}
-              className="flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border border-[#f3ece0]/22 bg-[#101520]/86 text-[#f3ece0] transition hover:border-[#e5a94c] hover:text-[#e5a94c]"
+        {/* Top-Right Compact Utility Cluster */}
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {/* Map Style Segmented Switcher */}
+            <div
+              role="group"
+              aria-label="Map layer style"
+              className="hidden sm:flex items-center border border-[#f2ece1]/18 bg-[#0c111b]/94 p-0.5"
             >
-              <BookOpen className="h-4 w-4" />
-            </button>
+              {(['dark', 'hybrid', 'terrain'] as TacticalMapStyle[]).map((styleKey) => (
+                <button
+                  key={styleKey}
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onChangeMapStyle(styleKey);
+                  }}
+                  className={`cursor-pointer px-2.5 py-1 text-[11px] font-medium capitalize transition whitespace-nowrap ${
+                    mapStyle === styleKey
+                      ? 'bg-[#e5a94c] text-[#0c111b] font-semibold'
+                      : 'text-[#c3ccdc] hover:text-white'
+                  }`}
+                >
+                  {styleKey === 'dark' ? 'Tactical' : styleKey === 'hybrid' ? 'Satellite' : 'Terrain'}
+                </button>
+              ))}
+            </div>
 
+            {/* Quick City Teleport Toggle */}
             <button
               type="button"
               tabIndex={-1}
-              aria-label="Open World Atlas Map"
-              title="World Atlas Map (G)"
-              onClick={handleBtnClick(onOpenWorldAtlas)}
-              className="flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border border-[#f3ece0]/22 bg-[#101520]/86 text-[#f3ece0] transition hover:border-[#e5a94c] hover:text-[#e5a94c]"
-            >
-              <Globe className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label="Open Adaptive Soundscape"
-              title="Soundscape & Lyria Music (M)"
-              onClick={handleBtnClick(onOpenSoundscape)}
-              className={`flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border bg-[#101520]/86 transition hover:border-[#e5a94c] hover:text-[#e5a94c] ${
-                isMuted ? 'border-[#e05d5d]/50 text-[#e05d5d]' : 'border-[#f3ece0]/22 text-[#f3ece0]'
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setCityPickerOpen((o) => !o);
+              }}
+              aria-label="Jump to another city"
+              className={`flex h-9 cursor-pointer items-center gap-1.5 border px-2.5 text-xs font-medium transition whitespace-nowrap ${
+                cityPickerOpen
+                  ? 'border-[#e5a94c] bg-[#e5a94c] text-[#0c111b]'
+                  : 'border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] hover:border-[#e5a94c]'
               }`}
             >
-              <Music className="h-4 w-4" />
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">City</span>
             </button>
 
             <button
               type="button"
               tabIndex={-1}
-              aria-label="Open Voice Oracle"
-              title="Live Voice Oracle (V)"
-              onClick={handleBtnClick(onOpenVoiceOracle)}
-              className="flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border border-[#f3ece0]/22 bg-[#101520]/86 text-[#f3ece0] transition hover:border-[#e5a94c] hover:text-[#e5a94c]"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onRescanSector();
+              }}
+              aria-label="Rescan nearby real places"
+              title="Rescan nearby real places"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
             >
-              <Mic className="h-4 w-4" />
+              <Radar className="h-4 w-4" />
             </button>
 
             <button
               type="button"
               tabIndex={-1}
-              aria-label="Open Cloud Sync and Multiplayer"
-              title="Cloud Sync & Multiplayer (C)"
-              onClick={handleBtnClick(onOpenCloud)}
-              className="relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border border-[#f3ece0]/22 bg-[#101520]/86 text-[#f3ece0] transition hover:border-[#e5a94c] hover:text-[#e5a94c]"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onRecenter();
+              }}
+              aria-label="Center map on runner"
+              title="Center on Runner"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
+            >
+              <Crosshair className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenQuests();
+              }}
+              aria-label="Open Quests and Vector Memory (Q)"
+              title="Quests & Memory (Q)"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
+            >
+              <ScrollText className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenSoundscape();
+              }}
+              aria-label="Open Soundscape (M)"
+              title="Soundscape (M)"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
+            >
+              {isMuted ? <VolumeX className="h-4 w-4 text-rose-300" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenCloud();
+              }}
+              aria-label="Open Cloud Sync & Multiplayer (C)"
+              title={`Cloud & Multiplayer (${remotePlayerCount} nearby)`}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
             >
               <Cloud className="h-4 w-4" />
-              {remotePlayerCount > 0 && (
-                <span className="absolute -right-1 -bottom-1 bg-[#52c78c] px-1 font-mono text-[9px] font-bold text-[#101520]">
-                  {remotePlayerCount}
-                </span>
-              )}
             </button>
 
             <button
               type="button"
               tabIndex={-1}
-              aria-label="Pause Game"
-              title="Pause (Esc / P)"
-              onClick={handleBtnClick(onTogglePause)}
-              className="flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center border border-[#f3ece0]/22 bg-[#101520]/86 text-[#f3ece0] transition hover:border-[#e5a94c] hover:text-[#e5a94c]"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onTogglePause();
+              }}
+              aria-label="Pause Game (Esc)"
+              title="Pause (Esc)"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e7ecf5] transition hover:border-[#e5a94c] hover:text-[#f3cf87]"
             >
               <Pause className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Minimal Coordinate & Biome Tag */}
-          <div className="hidden bg-[#101520]/76 px-2.5 py-1 text-right font-mono text-[10px] tracking-wider text-[#f3ece0] sm:block">
-            <div>{hud.biomeName}</div>
-            <div className="tabular-nums text-[#d0c7b7]">
-              POS ({hud.playerX}, {hud.playerZ}) · KO {hud.defeatedCount}
+          {/* Collapsible In-Game City Switcher Popover */}
+          {cityPickerOpen && (
+            <div className="w-[310px] sm:w-[370px] border border-[#e5a94c]/40 bg-[#0d131f]/98 p-3.5 shadow-2xl">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#f3cf87]">
+                  Jump to Any City on Earth
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCityPickerOpen(false)}
+                  className="cursor-pointer text-xs text-[#9aa5b8] hover:text-white"
+                >
+                  Close
+                </button>
+              </div>
+              <PlaceSearchBar
+                activeSectorName={sectorName}
+                compact
+                onSelectDestination={(center, label) => {
+                  onSelectDestination(center, label);
+                  setCityPickerOpen(false);
+                }}
+              />
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Bottom Row: Contextual Shrine Prompt + Combat Ability Readout */}
-      <div className="flex flex-col items-center gap-2 pb-1">
-        {nearShrine && (
+      {/* BOTTOM TACTICAL DOCK */}
+      <div className="flex flex-wrap items-end justify-between gap-2.5">
+        {/* Selected / Nearest Real Landmark Info Strip */}
+        <div className="pointer-events-auto min-w-[240px] max-w-[440px] flex-1 border border-[#f2ece1]/18 bg-[#0c111b]/94 px-3.5 py-2.5 shadow-xl">
+          {focusNode ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[11px] text-[#9aa6ba]">
+                  <span className="capitalize font-semibold text-[#e5a94c]">{focusNode.kind}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-mono tabular-nums">{focusDist}m away</span>
+                  {activeRoute && activeRoute.targetNodeId === focusNode.id && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono text-[#7dd3fc] tabular-nums">
+                        {activeRoute.isRealStreetRoute ? 'Street Route' : 'Direct'} ·{' '}
+                        {Math.max(0, Math.round(activeRoute.totalMeters - activeRoute.traveledMeters))}m left
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="truncate text-sm font-semibold text-[#f7f1e5]">
+                  {focusNode.name}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenStreetView(focusNode);
+                  }}
+                  className="flex h-9 cursor-pointer items-center gap-1.5 border border-[#f2ece1]/20 bg-[#151e30] px-2.5 text-xs font-medium text-[#dce4f2] transition hover:border-[#e5a94c] hover:text-white whitespace-nowrap"
+                >
+                  <Eye className="h-3.5 w-3.5 text-[#e5a94c]" />
+                  <span>Street View</span>
+                </button>
+
+                {canClaimFocus ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onClaimNode(focusNode);
+                    }}
+                    className="flex h-9 cursor-pointer items-center gap-1.5 border border-[#f7da9c] bg-[#e5a94c] px-3 text-xs font-bold text-[#0c111b] transition hover:bg-[#f2be68] whitespace-nowrap"
+                  >
+                    <Flag className="h-3.5 w-3.5" />
+                    <span>Claim [E]</span>
+                  </button>
+                ) : !focusNode.captured ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onRouteToNode(focusNode);
+                    }}
+                    className="flex h-9 cursor-pointer items-center gap-1.5 border border-[#38bdf8]/60 bg-[#0f2438] px-3 text-xs font-semibold text-[#bae6fd] transition hover:bg-[#173654] whitespace-nowrap"
+                  >
+                    <MapIcon className="h-3.5 w-3.5" />
+                    <span>Route Here</span>
+                  </button>
+                ) : (
+                  <span className="px-2 text-xs font-semibold text-emerald-300">Captured</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-[#b5bece]">
+              <Compass className="h-4 w-4 text-[#e5a94c]" />
+              <span>Click any landmark pin or road on the map to route your Runner.</span>
+            </div>
+          )}
+        </div>
+
+        {/* Tactical Action Buttons (EMP Pulse & Overdrive) */}
+        <div className="pointer-events-auto flex items-center gap-2">
           <button
             type="button"
             tabIndex={-1}
-            onClick={handleBtnClick(() => onInteractShrine(nearShrine.id))}
-            className="pointer-events-auto cursor-pointer border border-[#e5a94c] bg-[#101520]/92 px-4 py-2 text-xs font-semibold tracking-[0.14em] text-[#f5d18c] uppercase shadow-xl transition hover:bg-[#1a2232]"
+            disabled={!pulseReady}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onTriggerPulse();
+            }}
+            className={`flex h-11 cursor-pointer items-center gap-2 border px-4 text-xs font-bold transition whitespace-nowrap ${
+              pulseReady
+                ? 'border-[#38bdf8] bg-[#0e2a40] text-[#e0f2fe] hover:bg-[#153e5e]'
+                : 'border-[#f2ece1]/15 bg-[#0c111b]/90 text-[#7d889c] cursor-not-allowed'
+            }`}
           >
-            [E] Commune with {nearShrine.name}
+            <Zap className="h-4 w-4 text-[#38bdf8]" />
+            <span className="tabular-nums">
+              {player.pulseCooldown > 0.05
+                ? `EMP ${player.pulseCooldown.toFixed(1)}s`
+                : 'EMP Pulse [Space]'}
+            </span>
           </button>
-        )}
 
-        <div className="hidden items-center gap-4 text-[11px] font-medium tracking-[0.14em] uppercase sm:flex hud-text-shadow">
-          <span className={hud.dashReady ? 'text-[#7cd7f2]' : 'text-[#7c8491]'}>
-            [Shift] Dash {hud.dashReady ? 'Ready' : 'Charging'}
-          </span>
-          <span className="text-[#f3ece0]/30">·</span>
-          <span className={hud.strikeReady ? 'text-[#e5a94c]' : 'text-[#7c8491]'}>
-            [F] Resonance Strike {hud.strikeReady ? 'Ready' : 'Charging'}
-          </span>
-          <span className="text-[#f3ece0]/30">·</span>
-          <span className="text-[#d6cec0]">[Q] Quests · [G] Atlas · [M] Audio</span>
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onToggleOverdrive();
+            }}
+            className={`flex h-11 cursor-pointer items-center gap-2 border px-3.5 text-xs font-semibold transition whitespace-nowrap ${
+              player.overdriveActive
+                ? 'border-[#e5a94c] bg-[#e5a94c] text-[#0c111b]'
+                : 'border-[#f2ece1]/20 bg-[#0c111b]/94 text-[#e2e8f2] hover:border-[#e5a94c]'
+            }`}
+          >
+            <span>Overdrive [Shift]</span>
+          </button>
         </div>
       </div>
     </div>

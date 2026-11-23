@@ -27,13 +27,10 @@ console.error = (...args: unknown[]) => {
   origConsoleError(...args);
 };
 
-async function bootstrap() {
-  await initFirebase();
-  createRoot(document.getElementById('root')!).render(
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  );
-}
+void initFirebase();
 
-void bootstrap();
+createRoot(document.getElementById('root')!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

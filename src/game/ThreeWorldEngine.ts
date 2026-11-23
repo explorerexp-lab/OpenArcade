@@ -190,7 +190,7 @@ export class ThreeWorldEngine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
     this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2)
+      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.75)
     );
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -212,7 +212,7 @@ export class ThreeWorldEngine {
     pmremGenerator.dispose();
 
     const palette = BIOME_PALETTES[this.biomeKey];
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    const maxAniso = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 4);
     this.texPack = createProceduralTextures(palette, maxAniso);
 
     this.setupAtmosphereAndLighting(palette);
@@ -262,9 +262,11 @@ export class ThreeWorldEngine {
         uniform vec3 horizonColor;
         varying vec3 vWorldPos;
         void main() {
-          float h = clamp(normalize(vWorldPos).y * 1.45, 0.0, 1.0);
-          vec3 col = mix(horizonColor, topColor, pow(h, 0.72));
+          float h = clamp(normalize(vWorldPos).y * 1.65, 0.0, 1.0);
+          vec3 col = mix(horizonColor, topColor, pow(h, 0.68));
           gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
         }
       `,
     });
@@ -303,8 +305,8 @@ export class ThreeWorldEngine {
   }
 
   private setupTerrainAndSanctuary(palette: (typeof BIOME_PALETTES)[BiomeKey]): void {
-    // Extended outdoor terrain (168m x 168m) blending seamlessly into horizon fog
-    const terrainGeo = new THREE.PlaneGeometry(168, 168, 72, 72);
+    // Extended outdoor terrain (168m x 168m, optimized 52x52 grid) blending seamlessly into horizon fog
+    const terrainGeo = new THREE.PlaneGeometry(168, 168, 52, 52);
     terrainGeo.rotateX(-Math.PI / 2);
     this.applyTerrainHeights(terrainGeo);
 
@@ -452,16 +454,16 @@ export class ThreeWorldEngine {
 
     let placedTrees = 0;
     let attempt = 0;
-    while (placedTrees < this.trunkInstanced.count && attempt < 400) {
+    while (placedTrees < this.trunkInstanced.count && attempt < 450) {
       attempt++;
       const angle = (attempt * 2.39996 + this.sim.seedOffset) % (Math.PI * 2);
-      const radius = 14 + ((attempt * 17.3) % 44);
+      const radius = 16.5 + ((attempt * 17.3) % 34);
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
 
-      // Keep clear of central plaza, north sightline, and shrine plinths
-      if (Math.abs(x) < 4.5 && z < 8 && z > -26) continue;
-      if (this.sim.shrines.some((s) => Math.hypot(s.x - x, s.z - z) < 6.5)) continue;
+      // Keep clear of central plaza, title camera sightline, north shrine lane, and shrine plinths
+      if (Math.abs(x) < 5.5 && z < 15 && z > -28) continue;
+      if (this.sim.shrines.some((s) => Math.hypot(s.x - x, s.z - z) < 7.0)) continue;
 
       const y = groundHeightAt(x, z, this.sim.seedOffset);
       const scale = 0.85 + ((attempt * 7) % 10) * 0.032; // ±15% natural variation
@@ -861,6 +863,13 @@ export class ThreeWorldEngine {
     this.touchMoveZ = 0;
   };
 
+  private onVisibilityChange = () => {
+    this.onBlur();
+    if (!document.hidden && !this.disposed) {
+      this.lastTickTime = performance.now();
+    }
+  };
+
   private onPointerDown = (e: PointerEvent) => {
     if (this.phase !== 'playing') return;
     if (e.target !== this.renderer.domElement) return;
@@ -891,7 +900,7 @@ export class ThreeWorldEngine {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
-    document.addEventListener('visibilitychange', this.onBlur);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
@@ -934,6 +943,12 @@ export class ThreeWorldEngine {
 
   private tick = (): void => {
     if (this.disposed) return;
+
+    // Pause GPU/CPU work completely when browser tab is backgrounded
+    if (document.hidden) {
+      this.frameId = window.setTimeout(this.tick, 250);
+      return;
+    }
 
     const now = performance.now();
     const rawDt = (now - this.lastTickTime) / 1000;
@@ -1237,7 +1252,7 @@ export class ThreeWorldEngine {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
-    document.removeEventListener('visibilitychange', this.onBlur);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);

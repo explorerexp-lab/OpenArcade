@@ -71,8 +71,8 @@ export function groundHeightAt(x: number, z: number, seedOffset = 1.0): number {
   const waveB = Math.sin((x + z) * 0.045 + seedOffset * 1.4) * 1.4;
   const terrace = Math.round((waveA + waveB) * 2) * 0.25 + (waveA + waveB) * 0.5;
 
-  // Natural perimeter rim rise outside playable area
-  const rim = dist > 46 ? Math.pow((dist - 46) / 14, 1.8) * 6.5 : 0;
+  // Natural perimeter ridge framing the highland sanctuary without blocking the sky horizon
+  const rim = dist > 46 ? Math.min(9.5, Math.pow((dist - 46) / 14, 1.45) * 3.8) : 0;
 
   return Math.max(-0.4, terrace * smooth + rim);
 }

@@ -17,9 +17,21 @@ export let db!: Firestore;
 export let auth!: Auth;
 export const googleProvider = new GoogleAuthProvider();
 let firebaseReady = false;
+const readyListeners = new Set<() => void>();
 
 export function isFirebaseReady(): boolean {
   return firebaseReady;
+}
+
+export function onFirebaseReady(cb: () => void): () => void {
+  if (firebaseReady) {
+    cb();
+    return () => {};
+  }
+  readyListeners.add(cb);
+  return () => {
+    readyListeners.delete(cb);
+  };
 }
 
 export enum OperationType {
@@ -113,6 +125,10 @@ export async function initFirebase(): Promise<void> {
     db = getFirestore(appInstance, config.firestoreDatabaseId);
     auth = getAuth(appInstance);
     firebaseReady = true;
+    for (const listener of readyListeners) {
+      listener();
+    }
+    readyListeners.clear();
     void testConnection();
   } catch {
     // Graceful local-only mode if backend config is temporarily unreachable
